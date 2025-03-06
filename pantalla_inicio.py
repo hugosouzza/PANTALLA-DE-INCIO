@@ -10,7 +10,9 @@ def crear_base_datos():
                  nombre TEXT,
                  apellido TEXT,
                  email TEXT UNIQUE,
-                 contrasena TEXT)''')
+                 contrasena TEXT,
+                 kyc_completed INTEGER,
+                 risk_profile_completed INTEGER)''')
     conn.commit()
     conn.close()
 
@@ -21,103 +23,94 @@ def registrar_usuario(nombre, apellido, email, contrasena):
     conn = sqlite3.connect("usuarios.db")
     c = conn.cursor()
     try:
-        c.execute("INSERT INTO usuarios (nombre, apellido, email, contrasena) VALUES (?, ?, ?, ?)",
+        c.execute("INSERT INTO usuarios (nombre, apellido, email, contrasena, kyc_completed, risk_profile_completed) VALUES (?, ?, ?, ?, 0, 0)",
                   (nombre, apellido, email, encriptar_contrasena(contrasena)))
         conn.commit()
-        st.success("Registro completado correctamente. Ahora puedes iniciar sesión.")
+        st.success("User registered successfully. Now complete the KYC.")
+        st.session_state.step = "KYC"
+        st.session_state.email = email
     except sqlite3.IntegrityError:
-        st.error("El correo electrónico ya está registrado.")
+        st.error("The email is already registered.")
     conn.close()
 
-def verificar_usuario(email, contrasena):
+def complete_kyc():
     conn = sqlite3.connect("usuarios.db")
     c = conn.cursor()
-    c.execute("SELECT * FROM usuarios WHERE email = ? AND contrasena = ?", (email, encriptar_contrasena(contrasena)))
-    usuario = c.fetchone()
+    c.execute("UPDATE usuarios SET kyc_completed = 1 WHERE email = ?", (st.session_state.email,))
+    conn.commit()
     conn.close()
-    return usuario
+    st.session_state.step = "Risk Profile"
+
+def complete_risk_profile():
+    conn = sqlite3.connect("usuarios.db")
+    c = conn.cursor()
+    c.execute("UPDATE usuarios SET risk_profile_completed = 1 WHERE email = ?", (st.session_state.email,))
+    conn.commit()
+    conn.close()
+    st.session_state.step = "Registration"
 
 def mostrar_dashboard():
-    st.sidebar.title("Menú")
-    menu = ["Resumen", "Información del Usuario", "Documentos", "Análisis", "Carteras", "Operaciones", "Propuestas", "Alertas"]
-    opcion = st.sidebar.radio("Selecciona una opción", menu)
+    st.sidebar.title("Menu")
+    menu = ["Summary", "User Information", "Documents", "Analysis", "Portfolios", "Operations", "Proposals", "Alerts"]
+    opcion = st.sidebar.radio("Select an option", menu)
     
     st.title(opcion)
-    st.write("Contenido en desarrollo...")
+    st.write("Content under development...")
 
 def main():
     crear_base_datos()
     
     if "usuario_autenticado" not in st.session_state:
         st.session_state.usuario_autenticado = False
+    if "step" not in st.session_state:
+        st.session_state.step = "Start"
     
     if st.session_state.usuario_autenticado:
         mostrar_dashboard()
     else:
-        st.markdown("""
-            <style>
-            .centered {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                height: 90vh;
-                text-align: center;
-            }
-            .button {
-                width: 300px;
-                padding: 10px;
-                margin: 10px;
-                border-radius: 5px;
-                border: none;
-                font-size: 16px;
-                cursor: pointer;
-            }
-            .login-btn {
-                background-color: black;
-                color: white;
-            }
-            .register-btn {
-                background-color: white;
-                color: black;
-                border: 1px solid black;
-            }
-            </style>
-            """, unsafe_allow_html=True)
-        
-        st.markdown('<div class="centered">', unsafe_allow_html=True)
-        st.title("TRAID")
-        st.subheader("Bienvenido a la plataforma de asesoramiento financiero")
-        
-        opcion = st.radio("", ["Iniciar sesión", "Registrarse"], index=0, horizontal=True)
-        
-        if opcion == "Iniciar sesión":
-            st.subheader("Iniciar sesión")
-            email = st.text_input("Correo Electrónico")
-            contrasena = st.text_input("Contraseña", type="password")
-            if st.button("LOG IN", key="login", help="Iniciar sesión", use_container_width=True):
-                usuario = verificar_usuario(email, contrasena)
-                if usuario:
-                    st.session_state.usuario_autenticado = True
-                    st.experimental_rerun()
-                else:
-                    st.error("Credenciales incorrectas.")
-        
-        elif opcion == "Registrarse":
-            st.subheader("Registro de Usuario")
-            nombre = st.text_input("Nombre")
-            apellido = st.text_input("Apellido")
-            email = st.text_input("Correo Electrónico")
-            contrasena = st.text_input("Contraseña", type="password")
-            confirmar_contrasena = st.text_input("Confirmar Contraseña", type="password")
+        if st.session_state.step == "Start":
+            st.title("TRAID")
+            opcion = st.radio("", ["Login", "Register"], index=0, horizontal=True)
             
-            if st.button("CREATE ACCOUNT", key="register", use_container_width=True):
-                if contrasena == confirmar_contrasena:
-                    registrar_usuario(nombre, apellido, email, contrasena)
-                else:
-                    st.error("Las contraseñas no coinciden. Inténtalo de nuevo.")
+            if opcion == "Login":
+                st.subheader("Login")
+                email = st.text_input("Email")
+                contrasena = st.text_input("Password", type="password")
+                if st.button("LOG IN"):
+                    usuario = verificar_usuario(email, contrasena)
+                    if usuario:
+                        st.session_state.usuario_autenticado = True
+                        st.experimental_rerun()
+                    else:
+                        st.error("Incorrect credentials.")
+            
+            elif opcion == "Register":
+                st.subheader("Register")
+                nombre = st.text_input("First Name")
+                apellido = st.text_input("Last Name")
+                email = st.text_input("Email")
+                contrasena = st.text_input("Password", type="password")
+                confirmar_contrasena = st.text_input("Confirm Password", type="password")
+                
+                if st.button("CREATE ACCOUNT"):
+                    if contrasena == confirmar_contrasena:
+                        registrar_usuario(nombre, apellido, email, contrasena)
+                    else:
+                        st.error("Passwords do not match. Try again.")
         
-        st.markdown('</div>', unsafe_allow_html=True)
-
+        elif st.session_state.step == "KYC":
+            st.subheader("KYC Process")
+            st.write("Complete the KYC process before proceeding.")
+            if st.button("Complete KYC"):
+                complete_kyc()
+                st.experimental_rerun()
+        
+        elif st.session_state.step == "Risk Profile":
+            st.subheader("Risk Profile Test")
+            st.write("Complete the risk profile assessment before registering.")
+            if st.button("Complete Risk Profile"):
+                complete_risk_profile()
+                st.experimental_rerun()
+        
 if __name__ == "__main__":
     main()
